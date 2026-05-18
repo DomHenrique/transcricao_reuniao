@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+arquivos/
+audio.mp3
+ffmpeg.exe
+*.zip
