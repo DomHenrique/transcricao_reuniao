@@ -8,7 +8,9 @@ PASTA_ARQUIVOS.mkdir(exist_ok=True)
 
 MODELO_TRANSCRICAO = 'whisper-1'
 MODELO_CHAT = 'gpt-3.5-turbo-1106'
-INTERVALO_TRANSCRICAO = 5  # segundos entre cada chamada ao Whisper
+MODELO_VISAO = 'gpt-4o'
+INTERVALO_TRANSCRICAO = 5   # segundos entre cada chamada ao Whisper
+INTERVALO_PARTICIPANTES = 30  # segundos entre cada captura de tela
 
 PROMPT_RESUMO = '''
 Faça o resumo do texto delimitado por ####

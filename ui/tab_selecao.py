@@ -33,19 +33,29 @@ def _exibir_reuniao(pasta_reuniao):
     titulo = le_arquivo(pasta_reuniao / 'titulo.txt')
     transcricao = le_arquivo(pasta_reuniao / 'transcricao.txt')
     resumo = le_arquivo(pasta_reuniao / 'resumo.txt')
+    participantes = le_arquivo(pasta_reuniao / 'participantes.txt')
 
     if not resumo:
         with st.spinner('Gerando resumo...'):
-            resumo = _gerar_resumo(pasta_reuniao, transcricao)
+            resumo = _gerar_resumo(pasta_reuniao, transcricao, participantes)
 
     st.markdown(f'## {titulo}')
+
+    if participantes:
+        with st.expander('👥 Participantes', expanded=True):
+            for nome in participantes.splitlines():
+                st.markdown(f'- {nome}')
+
     st.markdown(resumo)
     st.divider()
     st.markdown('**Transcrição completa:**')
     st.markdown(transcricao)
 
 
-def _gerar_resumo(pasta_reuniao, transcricao):
-    resumo = chat_openai(mensagem=PROMPT_RESUMO.format(transcricao))
+def _gerar_resumo(pasta_reuniao, transcricao, participantes=''):
+    prompt = PROMPT_RESUMO.format(transcricao)
+    if participantes:
+        prompt = f'Participantes da reunião: {participantes}\n\n' + prompt
+    resumo = chat_openai(mensagem=prompt)
     salva_arquivo(pasta_reuniao / 'resumo.txt', resumo)
     return resumo

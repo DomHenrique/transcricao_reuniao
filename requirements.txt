@@ -1,6 +1,9 @@
 openai>=1.0.0
 python-dotenv
 streamlit
-streamlit-webrtc
+streamlit-autorefresh
+sounddevice
 pydub
 audioop-lts
+mss
+Pillow
