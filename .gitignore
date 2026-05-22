@@ -6,3 +6,4 @@ arquivos/
 audio.mp3
 ffmpeg.exe
 *.zip
+.claude/

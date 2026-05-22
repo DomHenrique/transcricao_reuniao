@@ -11,8 +11,29 @@ def transcreve_audio(caminho_audio, language='pt', response_format='text'):
             language=language,
             response_format=response_format,
             file=arquivo_audio,
+            prompt="Transcrição de reunião profissional. Sem legendas automáticas ou agradecimentos de canal.",
+            temperature=0.0
         )
-    return transcricao
+    
+    # Whisper commonly hallucinates YouTube captions on silent audio chunks
+    hallucinations = [
+        "Obrigado por assistir",
+        "Inscreva-se no canal",
+        "Deixe o seu like",
+        "Amara.org",
+        "Obrigado.",
+        "Obrigada.",
+        "Legendas",
+        "Compartilhe",
+    ]
+    
+    transcricao_limpa = transcricao.strip()
+    # Verifica se a transcrição é apenas uma das alucinações (comum em áudio mudo)
+    for h in hallucinations:
+        if h.lower() in transcricao_limpa.lower() and len(transcricao_limpa) < 50:
+            return ""
+            
+    return transcricao_limpa + " "
 
 
 def chat_openai(mensagem, modelo=MODELO_CHAT):

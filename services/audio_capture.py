@@ -3,7 +3,7 @@ import numpy as np
 import sounddevice as sd
 import pydub
 
-SAMPLE_RATE = 16000
+TARGET_SAMPLE_RATE = 16000  # taxa esperada pela API de transcrição
 CHANNELS = 1
 
 
@@ -12,12 +12,19 @@ class GravadorAudio:
         self.device_id = device_id
         self._queue = q.Queue()
         self._stream = None
+        self.sample_rate = None  # definida em iniciar()
+        self.current_volume = 0.0
 
     def iniciar(self):
+        # Usa a sample rate nativa do dispositivo para evitar
+        # erros de "Invalid sample rate" no ALSA/PortAudio
+        info = sd.query_devices(self.device_id, 'input')
+        self.sample_rate = int(info['default_samplerate'])
+
         self._stream = sd.InputStream(
             device=self.device_id,
             channels=CHANNELS,
-            samplerate=SAMPLE_RATE,
+            samplerate=self.sample_rate,
             dtype='int16',
             callback=self._callback,
         )
@@ -30,6 +37,9 @@ class GravadorAudio:
 
     def _callback(self, indata, frames, time_info, status):
         self._queue.put(indata.copy())
+        # Calcula o volume atual (pico) normalizado de 0.0 a 1.0
+        peak = np.max(np.abs(indata.astype(np.float32)))
+        self.current_volume = float(np.clip(peak / 32768.0, 0.0, 1.0))
 
     def get_frames(self):
         frames = []
@@ -40,17 +50,21 @@ class GravadorAudio:
             pass
         return frames
 
-    @staticmethod
-    def frames_para_audio(frames):
+    def frames_para_audio(self, frames):
+        """Converte frames capturados em AudioSegment, reamostrando para 16 kHz."""
         if not frames:
             return pydub.AudioSegment.empty()
         data = np.concatenate(frames, axis=0)
-        return pydub.AudioSegment(
+        segment = pydub.AudioSegment(
             data=data.tobytes(),
             sample_width=2,
-            frame_rate=SAMPLE_RATE,
+            frame_rate=self.sample_rate,
             channels=CHANNELS,
         )
+        # Resample para 16 kHz (exigido pela Whisper API)
+        if self.sample_rate != TARGET_SAMPLE_RATE:
+            segment = segment.set_frame_rate(TARGET_SAMPLE_RATE)
+        return segment
 
 
 def listar_dispositivos_entrada():

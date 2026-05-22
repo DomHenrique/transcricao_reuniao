@@ -9,7 +9,7 @@ from streamlit_autorefresh import st_autorefresh
 from config import PASTA_ARQUIVOS, INTERVALO_TRANSCRICAO, INTERVALO_PARTICIPANTES
 from services.audio_capture import GravadorAudio, listar_dispositivos_entrada
 from services.openai_client import transcreve_audio
-from services.participants import capturar_participantes
+from services.participants import capturar_participantes, listar_janelas
 from services.storage import salva_arquivo
 
 
@@ -18,6 +18,8 @@ class _EstadoGravacao:
         self._lock = threading.Lock()
         self.transcricao = ''
         self.participantes = []
+        self.volume = 0.0
+        self.erro = None
         self._ativo = True
 
     def parar(self):
@@ -45,9 +47,14 @@ class _EstadoGravacao:
             return list(self.participantes)
 
 
-def _loop_gravacao(estado, device_id, pasta_reuniao, capturar_nomes):
+def _loop_gravacao(estado, device_id, pasta_reuniao, capturar_nomes, window_id=None):
     gravador = GravadorAudio(device_id=device_id)
-    gravador.iniciar()
+    try:
+        gravador.iniciar()
+    except Exception as e:
+        estado.erro = f"Dispositivo indisponível ou erro no áudio: {e}"
+        estado.parar()
+        return
 
     ultima_transcricao = time.time()
     ultimo_participantes = time.time()
@@ -56,9 +63,10 @@ def _loop_gravacao(estado, device_id, pasta_reuniao, capturar_nomes):
     transcricao = ''
 
     while estado.esta_ativo():
+        estado.volume = gravador.current_volume
         frames = gravador.get_frames()
         if frames:
-            novo = GravadorAudio.frames_para_audio(frames)
+            novo = gravador.frames_para_audio(frames)
             audio_completo += novo
             audio_chunk += novo
             audio_completo.export(pasta_reuniao / 'audio.mp3')
@@ -76,7 +84,7 @@ def _loop_gravacao(estado, device_id, pasta_reuniao, capturar_nomes):
         if capturar_nomes and agora - ultimo_participantes > INTERVALO_PARTICIPANTES:
             ultimo_participantes = agora
             try:
-                nomes = capturar_participantes()
+                nomes = capturar_participantes(window_id=window_id)
                 if nomes:
                     estado.set_participantes(nomes)
                     salva_arquivo(pasta_reuniao / 'participantes.txt', '\n'.join(nomes))
@@ -113,6 +121,18 @@ def tab_grava_reuniao():
         help='Captura a tela a cada 30s e usa IA para identificar nomes visíveis na reunião. Requer X11 no Linux.',
     )
 
+    window_id = None
+    if capturar_nomes:
+        janelas = listar_janelas()
+        opcoes = ["Tela Inteira"] + list(janelas.values())
+        janela_label = st.selectbox(
+            'Janela alvo para captura',
+            options=opcoes,
+            disabled=st.session_state.gravando
+        )
+        if janela_label != "Tela Inteira":
+            window_id = next(k for k, v in janelas.items() if v == janela_label)
+
     col1, col2 = st.columns(2)
     with col1:
         if st.button('▶ Iniciar', disabled=st.session_state.gravando, use_container_width=True):
@@ -123,7 +143,7 @@ def tab_grava_reuniao():
             st.session_state.gravando = True
             threading.Thread(
                 target=_loop_gravacao,
-                args=(estado, device_id, pasta_reuniao, capturar_nomes),
+                args=(estado, device_id, pasta_reuniao, capturar_nomes, window_id),
                 daemon=True,
             ).start()
             st.rerun()
@@ -135,8 +155,17 @@ def tab_grava_reuniao():
             st.rerun()
 
     if st.session_state.gravando:
-        st_autorefresh(interval=3000, key='refresh_gravacao')
         estado = st.session_state.estado_gravacao
+
+        if estado.erro:
+            st.error(estado.erro)
+            st.session_state.gravando = False
+            time.sleep(2)
+            st.rerun()
+
+        st_autorefresh(interval=800, key='refresh_gravacao')
+
+        st.progress(estado.volume, text='🔊 Nível de Áudio captado')
 
         participantes = estado.get_participantes()
         if participantes:
